@@ -3,13 +3,17 @@ package server
 import (
 	"git.tyss.io/cj3636/dman/internal/auth"
 	"git.tyss.io/cj3636/dman/internal/config"
+	"git.tyss.io/cj3636/dman/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 )
 
 func New(addr string, cfg *config.Config) (*http.Server, error) {
-	store := NewStore("data")
+	store, err := storage.New("data")
+	if err != nil {
+		return nil, err
+	}
 	cmp := diffComparator()
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
