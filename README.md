@@ -32,3 +32,28 @@ users:
       - .bashrc
       - .zshrc
 ```
+
+## Bulk Sync
+
+Use tar-based high throughput endpoints instead of per-file upload/download:
+
+```
+./dman publish --bulk
+./dman install --bulk
+```
+
+These use:
+- POST /publish  (Content-Type: application/x-tar) tar entries named user/relpath
+- POST /install  (JSON CompareRequest -> tar stream response)
+
+## Endpoints Summary
+
+| Method | Path      | Auth | Description |
+|--------|-----------|------|-------------|
+| GET    | /health   | no   | Liveness check |
+| GET    | /status   | yes  | Stored file count |
+| POST   | /compare  | yes  | Compute change set |
+| POST   | /publish  | yes  | Bulk upload tar |
+| POST   | /install  | yes  | Bulk download tar (changed server files) |
+| PUT    | /upload   | yes  | Single file upload |
+| GET    | /download | yes  | Single file download |

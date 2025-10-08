@@ -1,6 +1,8 @@
 package server
 
 import (
+	"archive/tar"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -73,6 +75,85 @@ func downloadHandler(store *storage.Store) http.HandlerFunc {
 		}
 		defer rc.Close()
 		io.Copy(w, rc)
+	}
+}
+
+// publishHandler accepts a tar stream (application/x-tar) of files named user/relative/path
+// and stores them. Responds with JSON summary {"stored":N}.
+func publishHandler(store *storage.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Type") != "application/x-tar" {
+			http.Error(w, "expected application/x-tar", http.StatusUnsupportedMediaType)
+			return
+		}
+		tr := tar.NewReader(r.Body)
+		stored := 0
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if hdr.FileInfo().IsDir() {
+				continue
+			}
+			name := filepath.ToSlash(hdr.Name)
+			parts := strings.SplitN(name, "/", 2)
+			if len(parts) != 2 {
+				http.Error(w, "invalid entry name", 400)
+				return
+			}
+			user, rel := parts[0], parts[1]
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, tr); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			if err := store.Save(user, rel, &buf); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			stored++
+		}
+		json.NewEncoder(w).Encode(map[string]int{"stored": stored})
+	}
+}
+
+// installHandler accepts a CompareRequest JSON body and returns a tar containing the
+// files that should be installed locally (ChangeDelete or ChangeModify).
+func installHandler(store *storage.Store, cmp Comparator, cfg cfgUsers) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req model.CompareRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		serverInv, _ := buildStoreInventory(store, req.Users)
+		changes := cmp.Compare(req, serverInv)
+		w.Header().Set("Content-Type", "application/x-tar")
+		tw := tar.NewWriter(w)
+		defer tw.Close()
+		for _, ch := range changes {
+			if ch.Type != model.ChangeDelete && ch.Type != model.ChangeModify {
+				continue
+			}
+			f, err := store.Open(ch.User, ch.Path)
+			if err != nil {
+				continue
+			}
+			fi, _ := f.Stat()
+			hdr, _ := tar.FileInfoHeader(fi, "")
+			hdr.Name = ch.User + "/" + ch.Path
+			if err := tw.WriteHeader(hdr); err != nil {
+				f.Close()
+				continue
+			}
+			io.Copy(tw, f)
+			f.Close()
+		}
 	}
 }
 

@@ -14,6 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var publishBulk bool
+
+func init() { publishCmd.Flags().BoolVar(&publishBulk, "bulk", false, "use tar bulk publish endpoint") }
+
 var publishCmd = &cobra.Command{
 	Use:   "publish",
 	Short: "Upload changed files to server",
@@ -28,26 +32,63 @@ var publishCmd = &cobra.Command{
 			return err
 		}
 		reqBody := model.CompareRequest{Users: c.UserNames(), Inventory: inv}
-		b, _ := json.Marshal(reqBody)
-		httpClient := &http.Client{Timeout: 30 * time.Second}
-		req, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(b))
-		req.Header.Set("Content-Type", "application/json")
-		if c.AuthToken != "" {
-			req.Header.Set("Authorization", "Bearer "+c.AuthToken)
+		bReq, _ := json.Marshal(reqBody)
+		httpClient := &http.Client{Timeout: 60 * time.Second}
+		if publishBulk {
+			// first get change set
+			cmpReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(bReq))
+			cmpReq.Header.Set("Content-Type", "application/json")
+			if c.AuthToken != "" {
+				cmpReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
+			}
+			cmpResp, err := httpClient.Do(cmpReq)
+			if err != nil {
+				return err
+			}
+			defer cmpResp.Body.Close()
+			var changes []model.Change
+			if err := json.NewDecoder(cmpResp.Body).Decode(&changes); err != nil {
+				return err
+			}
+			var tarBuf bytes.Buffer
+			count, err := buildPublishTar(c, changes, &tarBuf)
+			if err != nil {
+				return err
+			}
+			pubReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/publish", bytes.NewReader(tarBuf.Bytes()))
+			pubReq.Header.Set("Content-Type", "application/x-tar")
+			if c.AuthToken != "" {
+				pubReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
+			}
+			pubResp, err := httpClient.Do(pubReq)
+			if err != nil {
+				return err
+			}
+			defer pubResp.Body.Close()
+			if pubResp.StatusCode >= 300 {
+				return fmt.Errorf("publish failed status=%d", pubResp.StatusCode)
+			}
+			fmt.Printf("bulk published %d files\n", count)
+			return nil
 		}
-		resp, err := httpClient.Do(req)
+		// non-bulk path (legacy per-file uploads via compare)
+		cmpReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(bReq))
+		cmpReq.Header.Set("Content-Type", "application/json")
+		if c.AuthToken != "" {
+			cmpReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
+		}
+		cmpResp, err := httpClient.Do(cmpReq)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer cmpResp.Body.Close()
 		var changes []model.Change
-		if err := json.NewDecoder(resp.Body).Decode(&changes); err != nil {
+		if err := json.NewDecoder(cmpResp.Body).Decode(&changes); err != nil {
 			return err
 		}
 		count := 0
 		for _, ch := range changes {
-			if ch.Type == model.ChangeAdd || ch.Type == model.ChangeModify { // client has file
-				// find user spec
+			if ch.Type == model.ChangeAdd || ch.Type == model.ChangeModify {
 				u := c.Users[ch.User]
 				abs := filepath.Join(u.Home, ch.Path)
 				fi, err := os.Stat(abs)
@@ -69,7 +110,7 @@ var publishCmd = &cobra.Command{
 				}
 				ur.Body.Close()
 				if ur.StatusCode >= 300 {
-					return fmt.Errorf("upload failed %s %s status=%d", ch.User, ch.Path, ur.StatusCode)
+					return fmt.Errorf("upload failed %s status=%d", ch.Path, ur.StatusCode)
 				}
 				fmt.Printf("uploaded %s:%s\n", ch.User, ch.Path)
 				count++
