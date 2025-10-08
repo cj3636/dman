@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/.gitignore">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/.gitignore" />
+              <option name="originalContent" value="bin/&#10;*.exe&#10;*.tmp&#10;*.log&#10;" />
+              <option name="updatedContent" value="# Build artifacts&#10;bin/&#10;*.exe&#10;*.tmp&#10;*.log&#10;&#10;# Intentionally keep IDE settings (.idea/ .vscode/) tracked if present" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
