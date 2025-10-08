@@ -2,7 +2,6 @@ package server
 
 import (
 	"archive/tar"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -82,7 +81,8 @@ func downloadHandler(store *storage.Store) http.HandlerFunc {
 // and stores them. Responds with JSON summary {"stored":N}.
 func publishHandler(store *storage.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Content-Type") != "application/x-tar" {
+		ct := r.Header.Get("Content-Type")
+		if !strings.HasPrefix(ct, "application/x-tar") { // allow parameters
 			http.Error(w, "expected application/x-tar", http.StatusUnsupportedMediaType)
 			return
 		}
@@ -107,12 +107,7 @@ func publishHandler(store *storage.Store) http.HandlerFunc {
 				return
 			}
 			user, rel := parts[0], parts[1]
-			var buf bytes.Buffer
-			if _, err := io.Copy(&buf, tr); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			if err := store.Save(user, rel, &buf); err != nil {
+			if err := store.Save(user, rel, tr); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
