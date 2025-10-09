@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/user"
 	"strings"
 
 	"git.tyss.io/cj3636/dman/internal/config"
