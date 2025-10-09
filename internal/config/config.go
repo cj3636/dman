@@ -16,10 +16,11 @@ type User struct {
 }
 
 type Config struct {
-	AuthToken string          `yaml:"auth_token" json:"auth_token"`
-	ServerURL string          `yaml:"server_url" json:"server_url"`
-	Users     map[string]User `yaml:"users" json:"users"`
-	path      string          // loaded from
+	AuthToken     string          `yaml:"auth_token" json:"auth_token"`
+	ServerURL     string          `yaml:"server_url" json:"server_url"`
+	GlobalInclude []string        `yaml:"include" json:"include"`
+	Users         map[string]User `yaml:"users" json:"users"`
+	path          string          // loaded from
 }
 
 func (c *Config) UserNames() []string {
@@ -34,7 +35,15 @@ func (c *Config) UserNames() []string {
 func (c *Config) UsersList() []model.UserSpec {
 	var out []model.UserSpec
 	for name, u := range c.Users {
-		out = append(out, model.UserSpec{Name: name, Home: u.Home, Include: u.Include})
+		inc := u.Include
+		if len(inc) == 0 { // fallback to global include, then defaults
+			if len(c.GlobalInclude) > 0 {
+				inc = c.GlobalInclude
+			} else {
+				inc = DefaultInclude
+			}
+		}
+		out = append(out, model.UserSpec{Name: name, Home: u.Home, Include: inc})
 	}
 	return out
 }

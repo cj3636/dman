@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"git.tyss.io/cj3636/dman/internal/cli"
 	"os"
+
+	"git.tyss.io/cj3636/dman/internal/cli"
 )
 
 func main() {

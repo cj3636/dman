@@ -25,12 +25,25 @@ Provide a `dman.yaml` config then:
 ```yaml
 auth_token: "CHANGEME"
 server_url: "http://localhost:7099"
+include:
+  - .bash_aliases
+  - .bashrc
+  - .dircolors
+  - .gitconfig
+  - .nano/
+  - .nanorc
+  - .oh-my-zsh/plugins/
+  - .profile
+  - .selected_editor
+  - .zshrc
+  - .zprofile
+  - .zlogin
+  - .zlogout
 users:
-  me:
-    home: /home/me/
-    include:
-      - .bashrc
-      - .zshrc
+  root:
+    home: /root/
+  cjserver:
+    home: /home/cjserver/
 ```
 
 ## Bulk Sync

@@ -3,5 +3,4 @@ bin/
 *.exe
 *.tmp
 *.log
-
-# Intentionally keep IDE settings (.idea/ .vscode/) tracked if present
+storage_test.json

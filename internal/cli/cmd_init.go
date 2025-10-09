@@ -17,7 +17,6 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Interactive first-time configuration setup",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// decide path
 		path := cfgPath
 		if path == "" {
 			path = defaultConfigPath()
@@ -26,32 +25,66 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("config already exists at %s", path)
 		}
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("Server URL [http://localhost:7099]: ")
-		url, _ := reader.ReadString('\n')
-		url = strings.TrimSpace(url)
-		if url == "" {
-			url = "http://localhost:7099"
+
+		// Hostname & Port
+		fmt.Printf("Hostname [localhost]: ")
+		host, _ := reader.ReadString('\n')
+		host = strings.TrimSpace(host)
+		if host == "" {
+			host = "localhost"
 		}
+		fmt.Printf("Port [7099]: ")
+		port, _ := reader.ReadString('\n')
+		port = strings.TrimSpace(port)
+		if port == "" {
+			port = "7099"
+		}
+		url := fmt.Sprintf("http://%s:%s", host, port)
+
+		// Auth token
 		fmt.Printf("Auth token (leave blank to auto-generate): ")
 		tok, _ := reader.ReadString('\n')
 		tok = strings.TrimSpace(tok)
 		if tok == "" {
 			tok = randomToken(24)
 		}
-		u, _ := user.Current()
-		home := ""
-		if u != nil {
-			home = u.HomeDir
+
+		// Users
+		fmt.Printf("Users (comma separated) [root,cjserver]: ")
+		userLine, _ := reader.ReadString('\n')
+		userLine = strings.TrimSpace(userLine)
+		if userLine == "" {
+			userLine = "root,cjserver"
 		}
-		// minimal user include set
-		cfgObj := &config.Config{AuthToken: tok, ServerURL: url, Users: map[string]config.User{}}
-		if home != "" {
-			cfgObj.Users[u.Username] = config.User{Home: ensureTrailingSlash(home), Include: []string{".bashrc", ".zshrc"}}
+		userParts := splitCommaList(userLine)
+		usersMap := map[string]config.User{}
+		for _, un := range userParts {
+			if un == "root" {
+				usersMap[un] = config.User{Home: "/root/"}
+			} else {
+				usersMap[un] = config.User{Home: "/home/" + un + "/"}
+			}
 		}
+
+		// Includes
+		fmt.Println("Default include list (comma separated) - press Enter to accept defaults:")
+		fmt.Println(strings.Join(config.DefaultInclude, ","))
+		fmt.Printf("Include overrides: ")
+		incLine, _ := reader.ReadString('\n')
+		incLine = strings.TrimSpace(incLine)
+		var include []string
+		if incLine == "" {
+			include = config.DefaultInclude
+		} else {
+			include = splitCommaList(incLine)
+		}
+
+		cfgObj := &config.Config{AuthToken: tok, ServerURL: url, GlobalInclude: include, Users: usersMap}
 		if err := config.Save(cfgObj, path); err != nil {
 			return err
 		}
 		fmt.Println("Config written to", path)
+		fmt.Println("You can edit per-user include overrides later by adding an 'include:' list under a user.")
 		return nil
 	},
 }
@@ -72,4 +105,16 @@ func ensureTrailingSlash(s string) string {
 		return s
 	}
 	return s + string(os.PathSeparator)
+}
+
+func splitCommaList(s string) []string {
+	parts := strings.Split(s, ",")
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
