@@ -1,8 +1,0 @@
-{"Time":"2025-10-08T13:45:17.8528802-07:00","Action":"start","Package":"git.tyss.io/cj3636/dman/internal/storage"}
-{"Time":"2025-10-08T13:45:18.153066-07:00","Action":"run","Package":"git.tyss.io/cj3636/dman/internal/storage","Test":"TestStoreBackupRestore"}
-{"Time":"2025-10-08T13:45:18.1536295-07:00","Action":"output","Package":"git.tyss.io/cj3636/dman/internal/storage","Test":"TestStoreBackupRestore","Output":"=== RUN   TestStoreBackupRestore\n"}
-{"Time":"2025-10-08T13:45:18.1728874-07:00","Action":"output","Package":"git.tyss.io/cj3636/dman/internal/storage","Test":"TestStoreBackupRestore","Output":"--- PASS: TestStoreBackupRestore (0.02s)\n"}
-{"Time":"2025-10-08T13:45:18.1734271-07:00","Action":"pass","Package":"git.tyss.io/cj3636/dman/internal/storage","Test":"TestStoreBackupRestore","Elapsed":0.02}
-{"Time":"2025-10-08T13:45:18.1734271-07:00","Action":"output","Package":"git.tyss.io/cj3636/dman/internal/storage","Output":"PASS\n"}
-{"Time":"2025-10-08T13:45:18.1772338-07:00","Action":"output","Package":"git.tyss.io/cj3636/dman/internal/storage","Output":"ok  \tgit.tyss.io/cj3636/dman/internal/storage\t0.324s\n"}
-{"Time":"2025-10-08T13:45:18.246808-07:00","Action":"pass","Package":"git.tyss.io/cj3636/dman/internal/storage","Elapsed":0.394}
