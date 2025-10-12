@@ -2,48 +2,60 @@ package server
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"git.tyss.io/cj3636/dman/internal/storage"
-	"git.tyss.io/cj3636/dman/pkg/model"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"git.tyss.io/cj3636/dman/internal/logx"
+	"git.tyss.io/cj3636/dman/internal/storage"
+	"git.tyss.io/cj3636/dman/pkg/model"
 )
-
-func healthHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"ok":true}`)
-	}
-}
-
-func statusHandler(store *storage.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		files, _ := store.List()
-		resp := map[string]any{"files": len(files)}
-		json.NewEncoder(w).Encode(resp)
-	}
-}
 
 type cfgUsers interface{ UsersList() []model.UserSpec }
 
-func compareHandler(store *storage.Store, cmp Comparator, cfg cfgUsers) http.HandlerFunc {
+func compareHandler(store storage.Backend, cmp Comparator, cfg cfgUsers, logger *logx.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		_ = cfg // reserved for future use (e.g., validation)
 		var req model.CompareRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		serverInv, _ := buildStoreInventory(store, req.Users)
+		includeSame := r.URL.Query().Get("include_same") == "1"
+		serverInv, err := buildStoreInventory(store, req.Users)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		changes := cmp.Compare(req, serverInv)
-		json.NewEncoder(w).Encode(changes)
+		if includeSame {
+			cmap := map[string]model.InventoryItem{}
+			for _, it := range req.Inventory {
+				cmap[it.User+"::"+it.Path] = it
+			}
+			smap := map[string]model.InventoryItem{}
+			for _, it := range serverInv {
+				smap[it.User+"::"+it.Path] = it
+			}
+			for k, cit := range cmap {
+				if sit, ok := smap[k]; ok && sit.Hash == cit.Hash {
+					changes = append(changes, model.Change{User: cit.User, Path: cit.Path, Type: model.ChangeSame})
+				}
+			}
+		}
+		logger.Info("compare", "changes", len(changes))
+		if err := json.NewEncoder(w).Encode(changes); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
 	}
 }
 
-func uploadHandler(store *storage.Store) http.HandlerFunc {
+func uploadHandler(store storage.Backend, logger *logx.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := r.URL.Query().Get("user")
 		p := r.URL.Query().Get("path")
@@ -55,11 +67,12 @@ func uploadHandler(store *storage.Store) http.HandlerFunc {
 			http.Error(w, err.Error(), 500)
 			return
 		}
+		logger.Info("upload", "user", user, "path", p)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
-func downloadHandler(store *storage.Store) http.HandlerFunc {
+func downloadHandler(store storage.Backend, logger *logx.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := r.URL.Query().Get("user")
 		p := r.URL.Query().Get("path")
@@ -74,19 +87,30 @@ func downloadHandler(store *storage.Store) http.HandlerFunc {
 		}
 		defer rc.Close()
 		io.Copy(w, rc)
+		logger.Info("download", "user", user, "path", p)
 	}
 }
 
 // publishHandler accepts a tar stream (application/x-tar) of files named user/relative/path
 // and stores them. Responds with JSON summary {"stored":N}.
-func publishHandler(store *storage.Store) http.HandlerFunc {
+func publishHandler(store storage.Backend, meta *Meta, logger *logx.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ct := r.Header.Get("Content-Type")
-		if !strings.HasPrefix(ct, "application/x-tar") { // allow parameters
+		if !strings.HasPrefix(ct, "application/x-tar") {
 			http.Error(w, "expected application/x-tar", http.StatusUnsupportedMediaType)
 			return
 		}
-		tr := tar.NewReader(r.Body)
+		var reader io.Reader = r.Body
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gzr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, "bad gzip", 400)
+				return
+			}
+			defer gzr.Close()
+			reader = gzr
+		}
+		tr := tar.NewReader(reader)
 		stored := 0
 		for {
 			hdr, err := tr.Next()
@@ -108,51 +132,83 @@ func publishHandler(store *storage.Store) http.HandlerFunc {
 			}
 			user, rel := parts[0], parts[1]
 			if err := store.Save(user, rel, tr); err != nil {
-				http.Error(w, err.Error(), 500)
+				code := 500
+				if strings.Contains(err.Error(), "too long") {
+					code = 400
+				}
+				http.Error(w, err.Error(), code)
 				return
 			}
 			stored++
 		}
-		json.NewEncoder(w).Encode(map[string]int{"stored": stored})
+		meta.recordPublish()
+		logger.Info("publish complete", "stored", stored)
+		if err := json.NewEncoder(w).Encode(map[string]int{"stored": stored}); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
 	}
 }
 
 // installHandler accepts a CompareRequest JSON body and returns a tar containing the
 // files that should be installed locally (ChangeDelete or ChangeModify).
-func installHandler(store *storage.Store, cmp Comparator, cfg cfgUsers) http.HandlerFunc {
+func installHandler(store storage.Backend, cmp Comparator, cfg cfgUsers, meta *Meta, logger *logx.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		_ = cfg
 		var req model.CompareRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		serverInv, _ := buildStoreInventory(store, req.Users)
-		changes := cmp.Compare(req, serverInv)
-		w.Header().Set("Content-Type", "application/x-tar")
-		tw := tar.NewWriter(w)
-		defer tw.Close()
-		for _, ch := range changes {
-			if ch.Type != model.ChangeDelete && ch.Type != model.ChangeModify {
-				continue
-			}
-			f, err := store.Open(ch.User, ch.Path)
-			if err != nil {
-				continue
-			}
-			fi, _ := f.Stat()
-			hdr, _ := tar.FileInfoHeader(fi, "")
-			hdr.Name = ch.User + "/" + ch.Path
-			if err := tw.WriteHeader(hdr); err != nil {
-				f.Close()
-				continue
-			}
-			io.Copy(tw, f)
-			f.Close()
+		serverInv, err := buildStoreInventory(store, req.Users)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
 		}
+		changes := cmp.Compare(req, serverInv)
+		accept := r.Header.Get("Accept-Encoding")
+		var writer io.Writer = w
+		if strings.Contains(accept, "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gw := gzip.NewWriter(w)
+			defer gw.Close()
+			writer = gw
+		}
+		w.Header().Set("Content-Type", "application/x-tar")
+		include := func(ch model.Change) bool { return ch.Type == model.ChangeDelete || ch.Type == model.ChangeModify }
+		writeChangesTar(store, changes, writer, include)
+		meta.recordInstall()
+		logger.Info("install streamed", "files", len(changes))
 	}
 }
 
-func buildStoreInventory(store *storage.Store, filterUsers []string) ([]model.InventoryItem, error) {
+func pruneHandler(store storage.Backend, logger *logx.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Deletes []struct {
+				User string `json:"user"`
+				Path string `json:"path"`
+			} `json:"deletes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		deleted := 0
+		for _, d := range body.Deletes {
+			if d.User == "" || d.Path == "" {
+				continue
+			}
+			_ = store.Delete(d.User, d.Path)
+			deleted++
+		}
+		if err := json.NewEncoder(w).Encode(map[string]int{"deleted": deleted}); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+		logger.Info("prune", "deleted", deleted)
+	}
+}
+
+func buildStoreInventory(store storage.Backend, filterUsers []string) ([]model.InventoryItem, error) {
 	files, err := store.List()
 	if err != nil {
 		return nil, err

@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
-	"github.com/spf13/cobra"
-	"net/http"
 	"os"
 	"path/filepath"
+	"time"
+
+	"git.tyss.io/cj3636/dman/internal/transfer"
+	"github.com/spf13/cobra"
 )
 
 var uploadCmd = &cobra.Command{
@@ -29,18 +32,11 @@ var uploadCmd = &cobra.Command{
 			return err
 		}
 		defer f.Close()
-		client := &http.Client{}
-		req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/upload?user=%s&path=%s", c.ServerURL, user, filepath.ToSlash(rel)), f)
-		if c.AuthToken != "" {
-			req.Header.Set("Authorization", "Bearer "+c.AuthToken)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
+		client := transfer.New(c.ServerURL, c.AuthToken)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := client.UploadFile(ctx, user, filepath.ToSlash(rel), f); err != nil {
 			return err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			return fmt.Errorf("upload failed: %d", resp.StatusCode)
 		}
 		fmt.Println("uploaded", user+":"+rel)
 		return nil

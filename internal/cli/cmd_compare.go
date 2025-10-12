@@ -1,16 +1,26 @@
 package cli
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
 	"git.tyss.io/cj3636/dman/internal/scan"
+	"git.tyss.io/cj3636/dman/internal/transfer"
 	"git.tyss.io/cj3636/dman/pkg/model"
 	"github.com/spf13/cobra"
 )
+
+var (
+	compareShowSame bool
+	compareJSON     bool
+)
+
+func init() {
+	compareCmd.Flags().BoolVar(&compareShowSame, "show-same", false, "include unchanged entries")
+	compareCmd.Flags().BoolVar(&compareJSON, "json", false, "output JSON")
+}
 
 var compareCmd = &cobra.Command{
 	Use:   "compare",
@@ -26,21 +36,17 @@ var compareCmd = &cobra.Command{
 			return err
 		}
 		reqBody := model.CompareRequest{Users: c.UserNames(), Inventory: inv}
-		b, _ := json.Marshal(reqBody)
-		httpClient := &http.Client{Timeout: 15 * time.Second}
-		req, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(b))
-		req.Header.Set("Content-Type", "application/json")
-		if c.AuthToken != "" {
-			req.Header.Set("Authorization", "Bearer "+c.AuthToken)
-		}
-		resp, err := httpClient.Do(req)
+		client := transfer.New(c.ServerURL, c.AuthToken)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		changes, err := client.Compare(ctx, reqBody, compareShowSame)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-		var changes []model.Change
-		if err := json.NewDecoder(resp.Body).Decode(&changes); err != nil {
-			return err
+		if compareJSON {
+			out, _ := json.MarshalIndent(changes, "", "  ")
+			fmt.Println(string(out))
+			return nil
 		}
 		for _, ch := range changes {
 			fmt.Printf("%s\t%s\t%s\n", ch.Type, ch.User, ch.Path)

@@ -1,22 +1,32 @@
 package cli
 
 import (
-	"bytes"
+	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"git.tyss.io/cj3636/dman/internal/scan"
+	"git.tyss.io/cj3636/dman/internal/transfer"
 	"git.tyss.io/cj3636/dman/pkg/model"
 	"github.com/spf13/cobra"
 )
 
 var publishBulk bool
+var publishPrune bool
+var publishJSON bool
+var publishGzip bool
 
-func init() { publishCmd.Flags().BoolVar(&publishBulk, "bulk", false, "use tar bulk publish endpoint") }
+func init() {
+	publishCmd.Flags().BoolVar(&publishBulk, "bulk", false, "use tar bulk publish endpoint")
+	publishCmd.Flags().BoolVar(&publishPrune, "prune", false, "delete server files missing locally")
+	publishCmd.Flags().BoolVar(&publishJSON, "json", false, "output JSON summary")
+	publishCmd.Flags().BoolVar(&publishGzip, "gzip", false, "gzip compress bulk tar payload")
+}
 
 var publishCmd = &cobra.Command{
 	Use:   "publish",
@@ -32,91 +42,112 @@ var publishCmd = &cobra.Command{
 			return err
 		}
 		reqBody := model.CompareRequest{Users: c.UserNames(), Inventory: inv}
-		bReq, _ := json.Marshal(reqBody)
-		httpClient := &http.Client{Timeout: 60 * time.Second}
-		if publishBulk {
-			// first get change set
-			cmpReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(bReq))
-			cmpReq.Header.Set("Content-Type", "application/json")
-			if c.AuthToken != "" {
-				cmpReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-			}
-			cmpResp, err := httpClient.Do(cmpReq)
-			if err != nil {
-				return err
-			}
-			defer cmpResp.Body.Close()
-			var changes []model.Change
-			if err := json.NewDecoder(cmpResp.Body).Decode(&changes); err != nil {
-				return err
-			}
-			var tarBuf bytes.Buffer
-			count, err := buildPublishTar(c, changes, &tarBuf)
-			if err != nil {
-				return err
-			}
-			pubReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/publish", bytes.NewReader(tarBuf.Bytes()))
-			pubReq.Header.Set("Content-Type", "application/x-tar")
-			if c.AuthToken != "" {
-				pubReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-			}
-			pubResp, err := httpClient.Do(pubReq)
-			if err != nil {
-				return err
-			}
-			defer pubResp.Body.Close()
-			if pubResp.StatusCode >= 300 {
-				return fmt.Errorf("publish failed status=%d", pubResp.StatusCode)
-			}
-			fmt.Printf("bulk published %d files\n", count)
-			return nil
-		}
-		// non-bulk path (legacy per-file uploads via compare)
-		cmpReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(bReq))
-		cmpReq.Header.Set("Content-Type", "application/json")
-		if c.AuthToken != "" {
-			cmpReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-		}
-		cmpResp, err := httpClient.Do(cmpReq)
+		client := transfer.New(c.ServerURL, c.AuthToken)
+		// overall publish timeout
+		rootCtx, rootCancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer rootCancel()
+		changes, err := client.Compare(rootCtx, reqBody, false)
 		if err != nil {
 			return err
 		}
-		defer cmpResp.Body.Close()
-		var changes []model.Change
-		if err := json.NewDecoder(cmpResp.Body).Decode(&changes); err != nil {
-			return err
+		if publishBulk {
+			resultCh := make(chan struct {
+				count int
+				err   error
+			}, 1)
+			pr, pw := io.Pipe()
+			enc := ""
+			if publishGzip {
+				enc = "gzip"
+			}
+			// build tar in background
+			go func(enc string) {
+				var w io.Writer = pw
+				var gw *gzip.Writer
+				if enc == "gzip" {
+					gw = gzip.NewWriter(pw)
+					w = gw
+				}
+				cnt, err := transfer.BuildPublishTar(c, changes, w)
+				if gw != nil {
+					gw.Close()
+				}
+				pw.CloseWithError(err)
+				resultCh <- struct {
+					count int
+					err   error
+				}{cnt, err}
+			}(enc)
+			pubErr := client.BulkPublish(rootCtx, pr, enc)
+			res := <-resultCh
+			if res.err != nil {
+				return res.err
+			}
+			if pubErr != nil {
+				return pubErr
+			}
+			if publishPrune {
+				if _, err := client.Prune(rootCtx, changes); err != nil {
+					return err
+				}
+			}
+			if publishJSON {
+				fmt.Printf("{\"files\":%d}\n", res.count)
+			} else {
+				fmt.Printf("bulk published %d files (stream)\n", res.count)
+			}
+			return nil
 		}
+		// non-bulk path: upload individually with per-file timeouts
 		count := 0
 		for _, ch := range changes {
 			if ch.Type == model.ChangeAdd || ch.Type == model.ChangeModify {
 				u := c.Users[ch.User]
 				abs := filepath.Join(u.Home, ch.Path)
 				fi, err := os.Stat(abs)
-				if err != nil || fi.IsDir() {
+				if err != nil || fi.IsDir() { // skip missing/dir
 					continue
 				}
 				f, err := os.Open(abs)
 				if err != nil {
 					return err
 				}
-				upReq, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/upload?user=%s&path=%s", c.ServerURL, ch.User, filepath.ToSlash(ch.Path)), f)
-				if c.AuthToken != "" {
-					upReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-				}
-				ur, err := httpClient.Do(upReq)
+				fileCtx, cancel := context.WithTimeout(rootCtx, 30*time.Second)
+				err = client.UploadFile(fileCtx, ch.User, filepath.ToSlash(ch.Path), f)
+				cancel()
 				f.Close()
 				if err != nil {
 					return err
 				}
-				ur.Body.Close()
-				if ur.StatusCode >= 300 {
-					return fmt.Errorf("upload failed %s status=%d", ch.Path, ur.StatusCode)
+				if !publishJSON {
+					fmt.Printf("uploaded %s:%s\n", ch.User, ch.Path)
 				}
-				fmt.Printf("uploaded %s:%s\n", ch.User, ch.Path)
 				count++
 			}
 		}
-		fmt.Printf("publish complete (%d files)\n", count)
+		if publishPrune {
+			if _, err := client.Prune(rootCtx, changes); err != nil {
+				return err
+			}
+		}
+		if publishJSON {
+			fmt.Printf("{\"files\":%d}\n", count)
+		} else {
+			fmt.Printf("publish complete (%d files)\n", count)
+		}
 		return nil
 	},
+}
+
+// retained for backward compatibility with potential JSON output consumers (not used now)
+// doPrune logic moved into transfer.Client.Prune
+func legacyPrunePayload(changes []model.Change) []byte {
+	var dels []map[string]string
+	for _, ch := range changes {
+		if ch.Type == model.ChangeDelete {
+			dels = append(dels, map[string]string{"user": ch.User, "path": ch.Path})
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"deletes": dels})
+	return b
 }

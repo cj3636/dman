@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"git.tyss.io/cj3636/dman/internal/logx"
 	"git.tyss.io/cj3636/dman/internal/server"
 	"github.com/spf13/cobra"
 	"net/http"
@@ -26,14 +26,15 @@ var serveCmd = &cobra.Command{
 		if addr == "" {
 			addr = ":7099"
 		}
-		srv, err := server.New(addr, c)
+		logger := logx.NewWithLevel(logLevel)
+		srv, err := server.New(addr, c, logger)
 		if err != nil {
 			return err
 		}
 		go func() {
-			fmt.Printf("server listening on %s\n", addr)
+			logger.Info("server listening", "addr", addr)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				fmt.Println("server error:", err)
+				logger.Error("server error", "err", err)
 			}
 		}()
 		ch := make(chan os.Signal, 1)
@@ -41,6 +42,7 @@ var serveCmd = &cobra.Command{
 		<-ch
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		logger.Info("server shutting down")
 		return srv.Shutdown(ctx)
 	},
 }

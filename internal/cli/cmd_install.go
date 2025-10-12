@@ -1,23 +1,30 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
+	"compress/gzip"
+	"context"
 	"fmt"
-	"net/http"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"git.tyss.io/cj3636/dman/internal/fsio"
 	"git.tyss.io/cj3636/dman/internal/scan"
+	"git.tyss.io/cj3636/dman/internal/transfer"
 	"git.tyss.io/cj3636/dman/pkg/model"
 	"github.com/spf13/cobra"
 )
 
 var installBulk bool
+var installJSON bool
+var installGzip bool
 
-func init() { installCmd.Flags().BoolVar(&installBulk, "bulk", false, "use tar bulk install endpoint") }
+func init() {
+	installCmd.Flags().BoolVar(&installBulk, "bulk", false, "use tar bulk install endpoint")
+	installCmd.Flags().BoolVar(&installJSON, "json", false, "output JSON summary")
+	installCmd.Flags().BoolVar(&installGzip, "gzip", false, "request gzip compressed bulk tar")
+}
 
 var installCmd = &cobra.Command{
 	Use:   "install",
@@ -33,42 +40,41 @@ var installCmd = &cobra.Command{
 			return err
 		}
 		reqBody := model.CompareRequest{Users: c.UserNames(), Inventory: inv}
-		bReq, _ := json.Marshal(reqBody)
-		httpClient := &http.Client{Timeout: 60 * time.Second}
+		client := transfer.New(c.ServerURL, c.AuthToken)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 		if installBulk {
-			instReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/install", bytes.NewReader(bReq))
-			instReq.Header.Set("Content-Type", "application/json")
-			if c.AuthToken != "" {
-				instReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-			}
-			resp, err := httpClient.Do(instReq)
+			bodyReq := reqBody
+			respBody, err := client.BulkInstall(ctx, bodyReq, func() string {
+				if installGzip {
+					return "gzip"
+				}
+				return ""
+			}())
 			if err != nil {
 				return err
 			}
-			defer resp.Body.Close()
-			if resp.StatusCode >= 300 {
-				return fmt.Errorf("install failed status=%d", resp.StatusCode)
+			defer respBody.Close()
+			var reader io.Reader = respBody
+			if installGzip {
+				if gr, err := gzip.NewReader(respBody); err == nil {
+					reader = gr
+					defer gr.Close()
+				}
 			}
-			count, err := applyInstallTar(c, resp.Body)
+			count, err := applyInstallTar(c, reader)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("bulk installed %d files\n", count)
+			if installJSON {
+				fmt.Printf("{\"files\":%d}\n", count)
+			} else {
+				fmt.Printf("bulk installed %d files\n", count)
+			}
 			return nil
 		}
-		// legacy per-file path
-		cmpReq, _ := http.NewRequest(http.MethodPost, c.ServerURL+"/compare", bytes.NewReader(bReq))
-		cmpReq.Header.Set("Content-Type", "application/json")
-		if c.AuthToken != "" {
-			cmpReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-		}
-		cmpResp, err := httpClient.Do(cmpReq)
+		changes, err := client.Compare(ctx, reqBody, false)
 		if err != nil {
-			return err
-		}
-		defer cmpResp.Body.Close()
-		var changes []model.Change
-		if err := json.NewDecoder(cmpResp.Body).Decode(&changes); err != nil {
 			return err
 		}
 		count := 0
@@ -79,32 +85,30 @@ var installCmd = &cobra.Command{
 				if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 					return err
 				}
-				dlReq, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/download?user=%s&path=%s", c.ServerURL, ch.User, filepath.ToSlash(ch.Path)), nil)
-				if c.AuthToken != "" {
-					dlReq.Header.Set("Authorization", "Bearer "+c.AuthToken)
-				}
-				dlResp, err := httpClient.Do(dlReq)
+				fileCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				rc, err := client.DownloadFile(fileCtx, ch.User, filepath.ToSlash(ch.Path))
 				if err != nil {
+					cancel()
 					return err
 				}
-				if dlResp.StatusCode == 404 {
-					dlResp.Body.Close()
-					continue
-				}
-				if dlResp.StatusCode >= 300 {
-					dlResp.Body.Close()
-					return fmt.Errorf("download failed %s status=%d", ch.Path, dlResp.StatusCode)
-				}
-				if err := fsio.AtomicWrite(abs, dlResp.Body); err != nil {
-					dlResp.Body.Close()
+				if err := fsio.AtomicWrite(abs, rc); err != nil {
+					rc.Close()
+					cancel()
 					return err
 				}
-				dlResp.Body.Close()
-				fmt.Printf("downloaded %s:%s\n", ch.User, ch.Path)
+				rc.Close()
+				cancel()
+				if !installJSON {
+					fmt.Printf("downloaded %s:%s\n", ch.User, ch.Path)
+				}
 				count++
 			}
 		}
-		fmt.Printf("install complete (%d files)\n", count)
+		if installJSON {
+			fmt.Printf("{\"files\":%d}\n", count)
+		} else {
+			fmt.Printf("install complete (%d files)\n", count)
+		}
 		return nil
 	},
 }

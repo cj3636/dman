@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	cfgPath string
-	cfg     *config.Config
+	cfgPath  string
+	cfg      *config.Config
+	logLevel string
 )
 
 var rootCmd = &cobra.Command{
@@ -30,6 +31,9 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if err := loaded.Validate(); err != nil {
+			return err
+		}
 		cfg = loaded
 		return nil
 	},
@@ -37,6 +41,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() error {
 	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", defaultConfigPath(), "path to config file (dman.yaml)")
+	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "log level (info|debug)")
 	// register subcommands
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(compareCmd)

@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
+	"git.tyss.io/cj3636/dman/internal/transfer"
 	"github.com/spf13/cobra"
 )
+
+var statusJSON bool
+
+func init() { statusCmd.Flags().BoolVar(&statusJSON, "json", false, "output JSON") }
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
@@ -18,28 +22,28 @@ var statusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		client := &http.Client{Timeout: 5 * time.Second}
+		client := transfer.New(c.ServerURL, c.AuthToken)
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.ServerURL+"/health", nil)
-		resp, err := client.Do(req)
+		h, err := client.Health(ctx)
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-		var m map[string]any
-		json.NewDecoder(resp.Body).Decode(&m)
-		fmt.Printf("health: %v (code=%d)\n", m, resp.StatusCode)
-		// Try /status if token
+		if statusJSON {
+			hb, _ := json.MarshalIndent(h, "", "  ")
+			fmt.Println(string(hb))
+		} else {
+			fmt.Printf("health: %+v\n", h)
+		}
 		if c.AuthToken != "" {
-			req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.ServerURL+"/status", nil)
-			req2.Header.Set("Authorization", "Bearer "+c.AuthToken)
-			resp2, err2 := client.Do(req2)
-			if err2 == nil {
-				defer resp2.Body.Close()
-				var s map[string]any
-				json.NewDecoder(resp2.Body).Decode(&s)
-				fmt.Printf("status: %v (code=%d)\n", s, resp2.StatusCode)
+			st, err := client.Status(ctx)
+			if err == nil {
+				if statusJSON {
+					sb, _ := json.MarshalIndent(st, "", "  ")
+					fmt.Println(string(sb))
+				} else {
+					fmt.Printf("status: %+v\n", st)
+				}
 			}
 		}
 		return nil

@@ -1,0 +1,88 @@
+# Docker Compose for dman development and testing
+
+services:
+  # Main application
+  dman:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "dev"
+        COMMIT: "local"
+        BUILD_TIME: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ports:
+      - "3626:3626"
+    environment:
+      - DMAN_VERIFY_WRITE=1
+    volumes:
+      - dman_data:/app/data
+      - ./configs/dman.yaml:/app/dman.yaml:ro
+    depends_on:
+      - redis
+      - mariadb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/dman", "status", "--json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis for testing Redis backend
+  redis:
+    image: redis:7.2-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # MariaDB for testing database backend
+  mariadb:
+    image: mariadb:11.2
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=dman
+      - MYSQL_USER=dman
+      - MYSQL_PASSWORD=dmanpass
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Test client container for integration testing
+  dman-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "dev-client"
+        COMMIT: "local"
+    volumes:
+      - ./test-configs:/app/configs:ro
+      - ./testdata:/app/testdata:rw
+    depends_on:
+      - dman
+    profiles:
+      - testing
+    command: ["--help"]
+
+volumes:
+  dman_data:
+    driver: local
+  redis_data:
+    driver: local
+  mariadb_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge

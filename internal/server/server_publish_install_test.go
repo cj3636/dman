@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"git.tyss.io/cj3636/dman/internal/config"
+	"git.tyss.io/cj3636/dman/internal/logx"
 	"git.tyss.io/cj3636/dman/internal/storage"
 	"git.tyss.io/cj3636/dman/pkg/model"
 	"io"
@@ -16,7 +17,9 @@ import (
 func TestPublishAndInstallEndpoints(t *testing.T) {
 	cfg := &config.Config{AuthToken: "tok", Users: map[string]config.User{"u": {Home: t.TempDir() + "/", Include: []string{"file.txt"}}}}
 	store, _ := storage.New(t.TempDir())
-	h := newHandler(cfg, store)
+	meta, _ := loadMeta(t.TempDir())
+	logger := logx.New()
+	h := newHandler(cfg, store, meta, logger)
 	ts := httptest.NewServer(h)
 	defer ts.Close()
 
@@ -27,10 +30,10 @@ func TestPublishAndInstallEndpoints(t *testing.T) {
 		data := []byte("hello world")
 		hdr := &tar.Header{Name: "u/file.txt", Mode: 0o644, Size: int64(len(data))}
 		if err := tw.WriteHeader(hdr); err != nil {
-			t.Fatal(err)
+			fatalIf(t, err)
 		}
 		if _, err := tw.Write(data); err != nil {
-			t.Fatal(err)
+			fatalIf(t, err)
 		}
 	}
 	tw.Close()
@@ -39,9 +42,7 @@ func TestPublishAndInstallEndpoints(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer tok")
 	req.Header.Set("Content-Type", "application/x-tar")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIf(t, err)
 	if resp.StatusCode != 200 {
 		t.Fatalf("publish status %d", resp.StatusCode)
 	}
@@ -54,9 +55,7 @@ func TestPublishAndInstallEndpoints(t *testing.T) {
 	instReq.Header.Set("Authorization", "Bearer tok")
 	instReq.Header.Set("Content-Type", "application/json")
 	instResp, err := http.DefaultClient.Do(instReq)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fatalIf(t, err)
 	if instResp.StatusCode != 200 {
 		t.Fatalf("install status %d", instResp.StatusCode)
 	}
@@ -68,13 +67,17 @@ func TestPublishAndInstallEndpoints(t *testing.T) {
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			t.Fatalf("tar error: %v", err)
-		}
+		fatalIf(t, err)
 		entries++
 	}
 	instResp.Body.Close()
 	if entries != 1 {
 		t.Fatalf("expected 1 entry got %d", entries)
+	}
+}
+
+func fatalIf(t *testing.T, err error) {
+	if err != nil {
+		t.Fatal(err)
 	}
 }

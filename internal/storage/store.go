@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const MaxPathLen = 4096
+
 // Store manages versionless file blobs under a root directory organized by user.
 // Layout: root/<user>/<relative file path>
 // Only simple traversal protections; not intended for untrusted remote user input beyond controlled API layer.
@@ -34,6 +36,9 @@ func (s *Store) sanitize(rel string) (string, error) {
 	if rel == "" {
 		return "", errors.New("empty path")
 	}
+	if len(rel) > MaxPathLen {
+		return "", errors.New("path too long")
+	}
 	if strings.HasPrefix(rel, "/") {
 		return "", errors.New("absolute path disallowed")
 	}
@@ -49,20 +54,32 @@ func (s *Store) Save(user, rel string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	abs := filepath.Join(s.root, user, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	absDir := filepath.Join(s.root, user, filepath.Dir(filepath.FromSlash(rel)))
+	if err := os.MkdirAll(absDir, 0o755); err != nil {
 		return err
 	}
-	f, err := os.Create(abs)
+	finalPath := filepath.Join(s.root, user, filepath.FromSlash(rel))
+	tmp, err := os.CreateTemp(absDir, ".dman-*.")
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(f, r)
-	closeErr := f.Close()
+	_, copyErr := io.Copy(tmp, r)
+	// Attempt to fsync to reduce risk of partial writes on power loss (best-effort)
+	_ = tmp.Sync()
+	closeErr := tmp.Close()
 	if copyErr != nil {
+		os.Remove(tmp.Name())
 		return copyErr
 	}
-	return closeErr
+	if closeErr != nil {
+		os.Remove(tmp.Name())
+		return closeErr
+	}
+	if err := os.Rename(tmp.Name(), finalPath); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }
 
 // Open opens a stored file for reading.
@@ -86,6 +103,9 @@ func (s *Store) List() ([]string, error) {
 			return nil
 		}
 		rel, _ := filepath.Rel(s.root, path)
+		if rel == "_meta.json" { // skip meta file if placed at root
+			return nil
+		}
 		out = append(out, filepath.ToSlash(rel))
 		return nil
 	})
@@ -161,4 +181,14 @@ func (s *Store) Restore(r io.Reader) error {
 		// attempt to preserve mod time
 		_ = os.Chtimes(abs, time.Now(), hdr.ModTime)
 	}
+}
+
+// Delete removes a stored file for a user.
+func (s *Store) Delete(user, rel string) error {
+	rel, err := s.sanitize(rel)
+	if err != nil {
+		return err
+	}
+	abs := filepath.Join(s.root, user, filepath.FromSlash(rel))
+	return os.Remove(abs)
 }

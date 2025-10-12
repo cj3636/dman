@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"git.tyss.io/cj3636/dman/internal/fsio"
-	"github.com/spf13/cobra"
-	"net/http"
+	"git.tyss.io/cj3636/dman/internal/transfer"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/spf13/cobra"
 )
 
 var downloadCmd = &cobra.Command{
@@ -28,20 +31,15 @@ var downloadCmd = &cobra.Command{
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			return err
 		}
-		client := &http.Client{}
-		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/download?user=%s&path=%s", c.ServerURL, user, filepath.ToSlash(rel)), nil)
-		if c.AuthToken != "" {
-			req.Header.Set("Authorization", "Bearer "+c.AuthToken)
-		}
-		resp, err := client.Do(req)
+		client := transfer.New(c.ServerURL, c.AuthToken)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		rc, err := client.DownloadFile(ctx, user, filepath.ToSlash(rel))
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			return fmt.Errorf("download failed: %d", resp.StatusCode)
-		}
-		if err := fsio.AtomicWrite(abs, resp.Body); err != nil {
+		defer rc.Close()
+		if err := fsio.AtomicWrite(abs, rc); err != nil {
 			return err
 		}
 		fmt.Println("downloaded", user+":"+rel)
