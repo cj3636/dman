@@ -1,7 +1,8 @@
 # Build artifacts
-bin/
+bin
 dman
+storage_test.json
 *.exe
 *.tmp
 *.log
-storage_test.json
+*.out
