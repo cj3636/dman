@@ -2,7 +2,7 @@
 # Target: Ubuntu Linux with Docker executor
 # Go version: 1.24
 
-image: registry.tyss.io/ci-images/go1.24:latest
+image: registry.tyss.io/cj3636/ci-images/go1.24:latest
 
 # Define pipeline stages
 stages:
