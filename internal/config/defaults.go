@@ -1,9 +1,11 @@
 package config
 
 var DefaultInclude = []string{
+	".agent",
 	".bash_aliases",
 	".bashrc",
 	".dircolors",
+	".fzf_git",
 	".gitconfig",
 	".nano/",
 	".nanorc",

@@ -18,14 +18,26 @@ func TestComparatorProperties(t *testing.T) {
 		changes := c.Compare(req, serverInv)
 		seen := map[string]struct{}{}
 		for _, ch := range changes {
-			k := ch.User+"::"+ch.Path
-			if _, ok := seen[k]; ok { t.Fatalf("duplicate change for %s", k) }
+			k := ch.User + "::" + ch.Path
+			if _, ok := seen[k]; ok {
+				t.Fatalf("duplicate change for %s", k)
+			}
 			seen[k] = struct{}{}
 			if ch.Type == model.ChangeModify {
 				var clientHash, serverHash string
-				for _, it := range clientInv { if it.User==ch.User && it.Path==ch.Path { clientHash = it.Hash } }
-				for _, it := range serverInv { if it.User==ch.User && it.Path==ch.Path { serverHash = it.Hash } }
-				if clientHash == serverHash { t.Fatalf("modify with identical hash %s", ch.Path) }
+				for _, it := range clientInv {
+					if it.User == ch.User && it.Path == ch.Path {
+						clientHash = it.Hash
+					}
+				}
+				for _, it := range serverInv {
+					if it.User == ch.User && it.Path == ch.Path {
+						serverHash = it.Hash
+					}
+				}
+				if clientHash == serverHash {
+					t.Fatalf("modify with identical hash %s", ch.Path)
+				}
 			}
 		}
 	}
@@ -35,17 +47,23 @@ func randomInventories() ([]model.InventoryItem, []model.InventoryItem) {
 	n := rand.Intn(10)
 	client := make([]model.InventoryItem, 0, n)
 	server := make([]model.InventoryItem, 0, n)
-	for i:=0;i<n;i++ {
+	for i := 0; i < n; i++ {
 		path := randomPath()
 		chash := randHash()
-		same := rand.Intn(2)==0
+		same := rand.Intn(2) == 0
 		shash := chash
-		if !same { shash = randHash() }
-		client = append(client, model.InventoryItem{User:"u", Path:path, Hash:chash})
+		if !same {
+			shash = randHash()
+		}
+		client = append(client, model.InventoryItem{User: "u", Path: path, Hash: chash})
 		// randomly drop from server or include modified
-		if rand.Intn(3)!=0 { server = append(server, model.InventoryItem{User:"u", Path:path, Hash:shash}) }
+		if rand.Intn(3) != 0 {
+			server = append(server, model.InventoryItem{User: "u", Path: path, Hash: shash})
+		}
 		// maybe extra server-only file
-		if rand.Intn(5)==0 { server = append(server, model.InventoryItem{User:"u", Path:randomPath(), Hash:randHash()}) }
+		if rand.Intn(5) == 0 {
+			server = append(server, model.InventoryItem{User: "u", Path: randomPath(), Hash: randHash()})
+		}
 	}
 	return client, server
 }
@@ -53,11 +71,12 @@ func randomInventories() ([]model.InventoryItem, []model.InventoryItem) {
 func randHash() string {
 	letters := []rune("abcdef0123456789")
 	b := make([]rune, 8)
-	for i:=range b { b[i] = letters[rand.Intn(len(letters))] }
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
 	return string(b)
 }
 
 func randomPath() string {
-	return "f"+randHash()+".txt"
+	return "f" + randHash() + ".txt"
 }
-

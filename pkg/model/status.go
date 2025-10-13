@@ -16,4 +16,3 @@ type StatusResponse struct {
 	LastInstall string            `json:"last_install,omitempty"`
 	Metrics     map[string]uint64 `json:"metrics,omitempty"`
 }
-

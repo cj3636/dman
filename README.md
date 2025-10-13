@@ -1,12 +1,12 @@
 # dman
 
-[![Pipeline Status](https://git.tyss.io/cj3636/dman/badges/main/pipeline.svg?style=for-the-badge)](https://git.tyss.io/cj3636/dman/-/pipelines)
-[![Coverage](https://git.tyss.io/cj3636/dman/badges/main/coverage.svg?style=for-the-badge)](https://git.tyss.io/cj3636/dman/-/jobs)
-[![Go Report Card](https://goreportcard.com/badge/github.com/cj3636/dman?style=for-the-badge)](https://goreportcard.com/report/github.com/cj3636/dman)
+[![pipeline status](https://git.tyss.io/cj3636/dman/badges/main/pipeline.svg?style=for-the-badge)](https://git.tyss.io/cj3636/dman/-/commits/main)
+[![coverage report](https://git.tyss.io/cj3636/dman/badges/main/coverage.svg?style=for-the-badge)](https://git.tyss.io/cj3636/dman/-/commits/main)
+[![Latest Release](https://git.tyss.io/cj3636/dman/-/badges/release.svg)](https://git.tyss.io/cj3636/dman/-/releases)
+
+[![Go Report Card](https://goreportcard.com/badge/git.tyss.io/cj3636/dman?style=for-the-badge)](https://goreportcard.com/report/git.tyss.io/cj3636/dman)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/cj3636/dman?style=for-the-badge&logo=go)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
-[![Docker Pulls](https://img.shields.io/docker/pulls/cj3636/dman?style=for-the-badge&logo=docker)](https://hub.docker.com/r/cj3636/dman)
-[![Release](https://img.shields.io/github/v/release/cj3636/dman?style=for-the-badge)](https://github.com/cj3636/dman/releases)
 
 **A high-performance, secure dotfile synchronization tool for LAN environments**
 
