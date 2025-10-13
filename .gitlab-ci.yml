@@ -19,9 +19,6 @@ variables:
   CGO_ENABLED: "0"
   GOOS: "linux"
   GOARCH: "amd64"
-  # Git strategy for proper version detection
-  GIT_STRATEGY: clone
-  GIT_DEPTH: "0"
 
 # Cache Go modules for faster builds
 cache:
