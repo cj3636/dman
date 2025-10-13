@@ -19,6 +19,7 @@ variables:
   CGO_ENABLED: "0"
   GOOS: "linux"
   GOARCH: "amd64"
+  COVERAGE_THRESHOLD: "70"
 
 # Cache Go modules for faster builds
 cache:
@@ -41,7 +42,7 @@ before_script:
 # VALIDATION STAGE
 # =============================================================================
 
-format-check:
+format:
   stage: validate
   script:
     - echo "Checking Go code formatting..."
@@ -63,7 +64,7 @@ format-check:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-vet-check:
+vet:
   stage: validate
   script:
     - echo "Running go vet static analysis..."
@@ -73,7 +74,7 @@ vet-check:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-lint-check:
+lint:
   stage: validate
   script:
     - echo "Installing staticcheck..."
@@ -86,7 +87,7 @@ lint-check:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-mod-verify:
+mod:
   stage: validate
   script:
     - echo "Verifying Go modules..."
@@ -108,7 +109,7 @@ mod-verify:
 # TEST STAGE
 # =============================================================================
 
-unit-tests:
+unit:
   stage: test
   script:
     - echo "Running unit tests..."
@@ -119,7 +120,7 @@ unit-tests:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-test-with-coverage:
+coverage:
   stage: test
   script:
     - echo "Running tests with coverage..."
@@ -128,7 +129,7 @@ test-with-coverage:
     - go tool cover -html=coverage.out -o coverage.html
     - |
       total=$(go tool cover -func=coverage.out | grep total: | awk '{gsub(/%/,"",$$3); split($$3,a,"."); print a[1]}')
-      threshold=70
+      threshold=$COVERAGE_THRESHOLD
       echo "Coverage: ${total}%"
       if [ "$total" -lt "$threshold" ]; then
         echo "❌ Coverage $total% below threshold $threshold%"
@@ -151,7 +152,7 @@ test-with-coverage:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-race-condition-tests:
+race:
   stage: test
   script:
     - echo "Running race condition tests..."
@@ -162,7 +163,7 @@ race-condition-tests:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-benchmark-tests:
+benchmark:
   stage: test
   script:
     - echo "Running benchmark tests..."
@@ -250,7 +251,7 @@ build-multi-arch:
 # SECURITY STAGE
 # =============================================================================
 
-security-scan:
+security:
   stage: security
   script:
     - echo "Installing gosec security scanner..."
@@ -270,7 +271,7 @@ security-scan:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-dependency-scan:
+dependency:
   stage: security
   script:
     - echo "Installing govulncheck..."
@@ -287,7 +288,7 @@ dependency-scan:
 # PACKAGE STAGE
 # =============================================================================
 
-docker-build:
+docker:
   stage: package
   image: docker:24-dind
   services:
@@ -328,7 +329,7 @@ docker-build:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-create-release:
+release:
   stage: package
   script:
     - echo "Creating release archives..."
@@ -357,7 +358,7 @@ create-release:
 # DEPLOY STAGE
 # =============================================================================
 
-deploy-staging:
+staging:
   stage: deploy
   environment:
     name: staging
@@ -368,12 +369,12 @@ deploy-staging:
     # Add your deployment logic here (e.g., kubectl, docker-compose, etc.)
     - echo "✅ Deployed to staging"
   dependencies:
-    - docker-build
+    - docker
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   when: manual
 
-deploy-production:
+production:
   stage: deploy
   environment:
     name: production
@@ -384,8 +385,8 @@ deploy-production:
     # Add your production deployment logic here
     - echo "✅ Deployed to production"
   dependencies:
-    - docker-build
-    - create-release
+    - docker
+    - release
   rules:
     - if: $CI_COMMIT_TAG
   when: manual
