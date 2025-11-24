@@ -5,4 +5,11 @@ storage_test.json
 *.exe
 *.tmp
 *.log
+<<<<<<< HEAD
 *.out
+=======
+storage_test.json
+data/
+dman
+dtm
+>>>>>>> 7f11374 (update gitignore)
