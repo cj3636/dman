@@ -15,7 +15,7 @@ import (
 )
 
 func TestPublishAndInstallEndpoints(t *testing.T) {
-	cfg := &config.Config{AuthToken: "tok", Users: map[string]config.User{"u": {Home: t.TempDir() + "/", Include: []string{"file.txt"}}}}
+	cfg := &config.Config{AuthToken: "tok", Users: map[string]config.User{"u": {Home: t.TempDir() + "/", Track: []string{"file.txt"}}}}
 	store, _ := storage.New(t.TempDir())
 	meta, _ := loadMeta(t.TempDir())
 	logger := logx.New()

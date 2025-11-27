@@ -5,17 +5,9 @@ storage_test.json
 *.exe
 *.tmp
 *.log
-<<<<<<< HEAD
-<<<<<<< HEAD
 *.out
-=======
-storage_test.json
 data/
-dman
 dtm
->>>>>>> 7f11374 (update gitignore)
-=======
-*.out
 
 # Config files
 *.env
@@ -23,4 +15,4 @@ dtm
 *.yml
 !docs/example.config.yaml
 !docs/example.env
->>>>>>> 83d7894 (Update gitignore to add config files; Add example config yaml;)
+!docs/config.yaml

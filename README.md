@@ -105,14 +105,14 @@ storage_driver: "disk"
 users:
   alice:
     home: "/home/alice/"
-    include:
+    track:
       - ".bashrc"
       - ".vimrc"
       - ".gitconfig"
       - ".ssh/config"
   bob:
     home: "/home/bob/"
-    include:
+    track:
       - ".zshrc"
       - ".tmux.conf"
 ```
@@ -233,6 +233,7 @@ make build
 | Command | Description | Example |
 |---------|-------------|---------|
 | `init` | Initialize configuration | `dman init` |
+| `config lint` | Validate configuration and summarize tracking | `dman config lint --config docs/config.yaml` |
 | `serve` | Start server | `dman serve --addr :3626` |
 | `compare` | Compare local vs server | `dman compare --show-same --json` |
 | `publish` | Upload changes | `dman publish --bulk --gzip --prune` |
@@ -266,17 +267,19 @@ server_url: "http://localhost:3626"
 # Storage configuration
 storage_driver: "disk"  # Options: disk, redis, maria/mariadb/mysql
 
-# Global file patterns (fallback for users without specific includes)
-include:
+# Global file patterns (fallback for users without specific user tracks)
+track:
   - ".bashrc"
   - ".profile"
   - ".gitconfig"
+  - "docs/"
+  - "!docs/config.yaml"
 
 # User-specific configurations
 users:
   alice:
     home: "/home/alice/"
-    include:
+    track:
       - ".bashrc"
       - ".vimrc"
       - ".gitconfig"
@@ -285,24 +288,35 @@ users:
   
   bob:
     home: "/home/bob/"
-    include:
+    track:
       - ".zshrc"
-      - ".oh-my-zsh/"
+      - ".oh-my-zsh/plugins/**/*.zsh"
       - ".config/nvim/"
 
 # Redis configuration (when storage_driver: redis)
-redis_addr: "127.0.0.1:6379"
-redis_password: ""
-redis_db: 0
-redis_tls: false
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  tls: false
 
 # MariaDB configuration (when storage_driver: maria/mariadb/mysql)
-maria_addr: "127.0.0.1:3306"
-maria_db: "dman"
-maria_user: "dman"
-maria_password: "password"
-maria_tls: false
+db:
+  addr: "127.0.0.1:3306"
+  db: "dman"
+  user: "dman"
+  password: "password"
+  tls: false
 ```
+
+**Notes on tracking and migration**
+
+- `track` entries support common shell globbing, including `**` for recursive directories, `?`, character classes, and brace
+  expansions (e.g., `configs/{dev,prod}.yaml`). Prefix an entry with `!` to exclude files or directories from tracking.
+- Each user inherits the global `track` list when their personal list is empty; the built-in defaults mirror `docs/config.yaml`.
+- Legacy configurations that used `include` are automatically migrated into `track` on load, but you should rename the key to
+  `track` for clarity and future compatibility.
+- Validate your configuration and view each user's effective include/exclude sets with `dman config lint --config <path>`.
 
 ### Environment Variables
 

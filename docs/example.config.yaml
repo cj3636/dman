@@ -1,49 +1,54 @@
 auth_token: pass
 server_url: http://cjserver4:7099
 storage_driver: disk
-include:
+track:
     - .agent
     - .bash_aliases
     - .bashrc
     - .colors
     - .config/glow/glow.yml
     - .dircolors
-    - go/bin/
+    - .fzf_git
     - .gitconfig
-    - .nano
+    - .nano/**
     - .nanorc
-    - .oh-my-zsh/plugins/
+    - .oh-my-zsh/plugins/**/*.zsh
+    - .oh-my-zsh/themes/*.zsh-theme
     - .profile
     - .selected_editor
-    - .zshrc
     - .wakeonlan
     - .zprofile
     - .zlogin
     - .zlogout
+    - .zshrc
+    - docs/
+    - "!docs/config.yaml"
 users:
     cjserver:
         home: /home/cjserver/
-        include: []
+        track: []
     root:
         home: /root/
-        include: []
-redis_addr: ""
-redis_socket: ""
-redis_username: ""
-redis_password: ""
-redis_db: 0
-redis_tls: false
-redis_tls_ca: ""
-redis_tls_insecure_skip_verify: false
-redis_tls_server_name: ""
-maria_addr: ""
-maria_socket: ""
-maria_db: ""
-maria_user: ""
-maria_password: ""
-maria_tls: false
-maria_tls_ca: ""
-maria_tls_cert: ""
-maria_tls_key: ""
-maria_tls_insecure_skip_verify: false
-maria_tls_server_name: ""
+        track: []
+redis:
+    addr: ""
+    socket: ""
+    username: ""
+    password: ""
+    db: 0
+    tls: false
+    tls_ca: ""
+    tls_insecure_skip_verify: false
+    tls_server_name: ""
+db:
+    addr: ""
+    socket: ""
+    db: ""
+    user: ""
+    password: ""
+    tls: false
+    tls_ca: ""
+    tls_cert: ""
+    tls_key: ""
+    tls_insecure_skip_verify: false
+    tls_server_name: ""
