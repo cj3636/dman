@@ -1,0 +1,49 @@
+auth_token: pass
+server_url: http://cjserver4:7099
+storage_driver: disk
+include:
+    - .agent
+    - .bash_aliases
+    - .bashrc
+    - .colors
+    - .config/glow/glow.yml
+    - .dircolors
+    - go/bin/
+    - .gitconfig
+    - .nano
+    - .nanorc
+    - .oh-my-zsh/plugins/
+    - .profile
+    - .selected_editor
+    - .zshrc
+    - .wakeonlan
+    - .zprofile
+    - .zlogin
+    - .zlogout
+users:
+    cjserver:
+        home: /home/cjserver/
+        include: []
+    root:
+        home: /root/
+        include: []
+redis_addr: ""
+redis_socket: ""
+redis_username: ""
+redis_password: ""
+redis_db: 0
+redis_tls: false
+redis_tls_ca: ""
+redis_tls_insecure_skip_verify: false
+redis_tls_server_name: ""
+maria_addr: ""
+maria_socket: ""
+maria_db: ""
+maria_user: ""
+maria_password: ""
+maria_tls: false
+maria_tls_ca: ""
+maria_tls_cert: ""
+maria_tls_key: ""
+maria_tls_insecure_skip_verify: false
+maria_tls_server_name: ""
