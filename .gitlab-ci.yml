@@ -91,8 +91,8 @@ mod:
   stage: validate
   script:
     - echo "Verifying Go modules..."
-    - go mod verify
     - go mod tidy
+    - go mod verify
     - |
       if ! git diff --quiet go.mod go.sum; then
         echo "❌ go.mod or go.sum is not up to date"
