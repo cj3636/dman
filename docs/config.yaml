@@ -1,56 +1,64 @@
-auth_token: 
-server_url: http://localhost:7099
+# Example production-ready configuration used on Ubuntu
+# This file demonstrates nested config sections, glob tracking, and exclusions.
+auth_token: change-me
+server_url: http://localhost:3626
 storage_driver: disk
-include:
-    - .agent
-    - .bash_aliases
-    - .bashrc
-    - .colors
-    - .config/glow/glow.yml
-    - .dircolors
-    - go/bin/
-    - .gitconfig
-    - .nano
-    - .nanorc
-    - .oh-my-zsh/plugins/
-    - .profile
-    - .selected_editor
-    - .zshrc
-    - .wakeonlan
-    - .zprofile
-    - .zlogin
-    - .zlogout
-users:
-    root:
-        home: /root/
-        include: []
-    user:
-        home: /home/user/
-        include: []
 
-redis: 
-    addr: ""
-    socket: ""
-    username: ""
-    password: ""
-    db: 0
-    tls: false
-    tls_ca: ""
-    tls_insecure_skip_verify: false
-    tls_server_name: ""
-database:
-    driver: "mariadb"
-    addr: ""
-    socket: ""
-    db: ""
-    user: ""
-    password: ""
-    tls: false
-    tls_ca: ""
-    tls_cert: ""
-    tls_key: ""
-    tls_insecure_skip_verify: false
-    tls_server_name: ""
+# Global tracking patterns applied to every user unless they override track
 track:
-    - docs/
-    - "!docs/config.yaml"
+  - .agent
+  - .bash_aliases
+  - .bashrc
+  - .colors
+  - .config/glow/glow.yml
+  - .dircolors
+  - .fzf_git
+  - .gitconfig
+  - .nano/**
+  - .nanorc
+  - .oh-my-zsh/plugins/**/*.zsh
+  - .oh-my-zsh/themes/*.zsh-theme
+  - .profile
+  - .selected_editor
+  - .wakeonlan
+  - .zlogin
+  - .zlogout
+  - .zprofile
+  - .zshrc
+  - docs/
+  - "!docs/config.yaml"
+
+# Per-user settings; leave track empty to inherit the global list
+users:
+  ubuntu:
+    home: /home/ubuntu/
+    track: []
+  root:
+    home: /root/
+    track: []
+
+# Redis connection options (used when storage_driver: redis)
+redis:
+  addr: 127.0.0.1:6379
+  socket: ""
+  username: ""
+  password: ""
+  db: 0
+  tls: false
+  tls_ca: ""
+  tls_insecure_skip_verify: false
+  tls_server_name: ""
+
+# MariaDB/MySQL options (used when storage_driver: maria/mariadb/mysql)
+db:
+  addr: 127.0.0.1:3306
+  socket: ""
+  db: dman
+  user: dman
+  password: changeme
+  tls: false
+  tls_ca: ""
+  tls_cert: ""
+  tls_key: ""
+  tls_insecure_skip_verify: false
+  tls_server_name: ""
