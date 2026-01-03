@@ -1,9 +1,9 @@
 package model
 
 type UserSpec struct {
-	Name    string   `json:"name"`
-	Home    string   `json:"home"`
-	Include []string `json:"include"`
+	Name  string   `json:"name"`
+	Home  string   `json:"home"`
+	Track []string `json:"track"`
 }
 
 type InventoryItem struct {

@@ -2,7 +2,9 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"git.tyss.io/cj3636/dman/pkg/model"
+	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 	"io/fs"
 	"os"
@@ -12,46 +14,48 @@ import (
 )
 
 type User struct {
-	Home    string   `yaml:"home" json:"home"`
-	Include []string `yaml:"include" json:"include"`
+	Home        string   `yaml:"home" json:"home"`
+	Track       []string `yaml:"track" json:"track"`
+	LegacyTrack []string `yaml:"include,omitempty" json:"-"`
 }
 
 // Redis configuration (optional when storage_driver != redis)
 type Redis struct {
-	Addr            string `yaml:"redis_addr" json:"redis_addr"`     // host:port for TCP
-	Socket          string `yaml:"redis_socket" json:"redis_socket"` // unix domain socket path (mutually exclusive with Addr)
-	Username        string `yaml:"redis_username" json:"redis_username"`
-	Password        string `yaml:"redis_password" json:"redis_password"`
-	DB              int    `yaml:"redis_db" json:"redis_db"`
-	TLS             bool   `yaml:"redis_tls" json:"redis_tls"`
-	TLSCA           string `yaml:"redis_tls_ca" json:"redis_tls_ca"`
-	TLSInsecureSkip bool   `yaml:"redis_tls_insecure_skip_verify" json:"redis_tls_insecure_skip_verify"`
-	TLSServerName   string `yaml:"redis_tls_server_name" json:"redis_tls_server_name"`
+	Addr            string `yaml:"addr" json:"addr"` // host:port for TCP
+	Socket          string `yaml:"socket" json:"socket"`
+	Username        string `yaml:"username" json:"username"`
+	Password        string `yaml:"password" json:"password"`
+	DB              int    `yaml:"db" json:"db"`
+	TLS             bool   `yaml:"tls" json:"tls"`
+	TLSCA           string `yaml:"tls_ca" json:"tls_ca"`
+	TLSInsecureSkip bool   `yaml:"tls_insecure_skip_verify" json:"tls_insecure_skip_verify"`
+	TLSServerName   string `yaml:"tls_server_name" json:"tls_server_name"`
 }
 
 // MariaDB configuration (optional when storage_driver not in maria/mariadb/mysql)
 type Maria struct {
-	Addr            string `yaml:"maria_addr" json:"maria_addr"`     // host:port
-	Socket          string `yaml:"maria_socket" json:"maria_socket"` // unix socket path
-	DB              string `yaml:"maria_db" json:"maria_db"`
-	User            string `yaml:"maria_user" json:"maria_user"`
-	Password        string `yaml:"maria_password" json:"maria_password"`
-	TLS             bool   `yaml:"maria_tls" json:"maria_tls"`
-	TLSCA           string `yaml:"maria_tls_ca" json:"maria_tls_ca"`
-	TLSCert         string `yaml:"maria_tls_cert" json:"maria_tls_cert"`
-	TLSKey          string `yaml:"maria_tls_key" json:"maria_tls_key"`
-	TLSInsecureSkip bool   `yaml:"maria_tls_insecure_skip_verify" json:"maria_tls_insecure_skip_verify"`
-	TLSServerName   string `yaml:"maria_tls_server_name" json:"maria_tls_server_name"`
+	Addr            string `yaml:"addr" json:"addr"` // host:port
+	Socket          string `yaml:"socket" json:"socket"`
+	DB              string `yaml:"db" json:"db"`
+	User            string `yaml:"user" json:"user"`
+	Password        string `yaml:"password" json:"password"`
+	TLS             bool   `yaml:"tls" json:"tls"`
+	TLSCA           string `yaml:"tls_ca" json:"tls_ca"`
+	TLSCert         string `yaml:"tls_cert" json:"tls_cert"`
+	TLSKey          string `yaml:"tls_key" json:"tls_key"`
+	TLSInsecureSkip bool   `yaml:"tls_insecure_skip_verify" json:"tls_insecure_skip_verify"`
+	TLSServerName   string `yaml:"tls_server_name" json:"tls_server_name"`
 }
 
 type Config struct {
 	AuthToken     string          `yaml:"auth_token" json:"auth_token"`
 	ServerURL     string          `yaml:"server_url" json:"server_url"`
 	StorageDriver string          `yaml:"storage_driver" json:"storage_driver"`
-	GlobalInclude []string        `yaml:"include" json:"include"`
+	GlobalTrack   []string        `yaml:"track" json:"track"`
+	LegacyTrack   []string        `yaml:"include,omitempty" json:"-"`
 	Users         map[string]User `yaml:"users" json:"users"`
-	Redis         Redis           `yaml:",inline" json:",inline"`
-	Maria         Maria           `yaml:",inline" json:",inline"`
+	Redis         Redis           `yaml:"redis" json:"redis"`
+	Maria         Maria           `yaml:"db" json:"db"`
 	path          string          // loaded from
 }
 
@@ -67,15 +71,8 @@ func (c *Config) UserNames() []string {
 func (c *Config) UsersList() []model.UserSpec {
 	var out []model.UserSpec
 	for name, u := range c.Users {
-		inc := u.Include
-		if len(inc) == 0 { // fallback to global include, then defaults
-			if len(c.GlobalInclude) > 0 {
-				inc = c.GlobalInclude
-			} else {
-				inc = DefaultInclude
-			}
-		}
-		out = append(out, model.UserSpec{Name: name, Home: u.Home, Include: inc})
+		inc := effectiveTrack(u.Track, c.GlobalTrack)
+		out = append(out, model.UserSpec{Name: name, Home: u.Home, Track: inc})
 	}
 	return out
 }
@@ -103,7 +100,7 @@ func (c *Config) validateRedis() error {
 		c.Redis.Addr = "127.0.0.1:6379" // sensible default
 	}
 	if c.Redis.Socket != "" && c.Redis.Addr != "" {
-		return errors.New("redis_socket and redis_addr are mutually exclusive")
+		return errors.New("redis.socket and redis.addr are mutually exclusive")
 	}
 	return nil
 }
@@ -119,7 +116,7 @@ func (c *Config) validateMaria() error {
 		c.Maria.Addr = "127.0.0.1:3306" // sensible default
 	}
 	if c.Maria.Socket != "" && c.Maria.Addr != "" {
-		return errors.New("maria_socket and maria_addr are mutually exclusive")
+		return errors.New("db.socket and db.addr are mutually exclusive")
 	}
 	return nil
 }
@@ -149,6 +146,25 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+
+	// validate tracking patterns (global + per-user effective lists)
+	globalTrack := c.GlobalTrack
+	if len(globalTrack) == 0 {
+		globalTrack = DefaultTrack
+	}
+	if err := validateTrackList(globalTrack, "global track list"); err != nil {
+		return err
+	}
+	c.GlobalTrack = globalTrack
+	for name, u := range c.Users {
+		if u.Home == "" {
+			return errors.New("user " + name + " requires home path")
+		}
+		list := effectiveTrack(u.Track, c.GlobalTrack)
+		if err := validateTrackList(list, "user "+name+" track list"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -165,6 +181,8 @@ func Load(path string) (*Config, error) {
 	if c.Users == nil {
 		c.Users = map[string]User{}
 	}
+	c.migrateLegacyIncludes()
+	c.normalizeTracks()
 	c.expand()
 	return &c, nil
 }
@@ -184,4 +202,76 @@ func Save(c *Config, path string) error {
 		return err
 	}
 	return os.WriteFile(path, b, fs.FileMode(0o600))
+}
+
+func (c *Config) migrateLegacyIncludes() {
+	// merge legacy include keys into track lists for backwards compatibility
+	if len(c.LegacyTrack) > 0 {
+		c.GlobalTrack = append(c.GlobalTrack, c.LegacyTrack...)
+	}
+	c.LegacyTrack = nil
+	for name, u := range c.Users {
+		if len(u.LegacyTrack) > 0 {
+			u.Track = append(u.Track, u.LegacyTrack...)
+		}
+		u.LegacyTrack = nil
+		c.Users[name] = u
+	}
+}
+
+func (c *Config) normalizeTracks() {
+	c.GlobalTrack = normalizeTrackList(c.GlobalTrack)
+	for name, u := range c.Users {
+		u.Track = normalizeTrackList(u.Track)
+		c.Users[name] = u
+	}
+}
+
+func normalizeTrackList(in []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, raw := range in {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func effectiveTrack(userTrack, globalTrack []string) []string {
+	if len(userTrack) > 0 {
+		return userTrack
+	}
+	if len(globalTrack) > 0 {
+		return globalTrack
+	}
+	return DefaultTrack
+}
+
+func validateTrackList(list []string, scope string) error {
+	hasInclude := false
+	for _, raw := range list {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(p, "!") {
+			p = strings.TrimPrefix(p, "!")
+		} else {
+			hasInclude = true
+		}
+		if ok := doublestar.ValidatePattern(filepath.ToSlash(p)); !ok {
+			return fmt.Errorf("invalid %s entry %q: failed glob validation", scope, raw)
+		}
+	}
+	if !hasInclude {
+		return fmt.Errorf("%s must contain at least one non-exclusion pattern", scope)
+	}
+	return nil
 }

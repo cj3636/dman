@@ -10,6 +10,8 @@ storage_test.json
 *.tmp
 *.log
 *.out
+data/
+dtm
 
 # App
 data
@@ -18,5 +20,6 @@ data
 *.env
 *.yaml
 *.yml
+!docs/example.config.yaml
+!docs/example.env
 !docs/config.yaml
-!docs/config.env

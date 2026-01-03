@@ -1,26 +1,32 @@
 package config
 
-var DefaultInclude = []string{
+var DefaultTrack = []string{
 	".agent",
 	".bash_aliases",
 	".bashrc",
+	".colors",
+	".config/glow/glow.yml",
 	".dircolors",
 	".fzf_git",
 	".gitconfig",
-	".nano/",
+	".nano/**",
 	".nanorc",
-	".oh-my-zsh/plugins/",
+	".oh-my-zsh/plugins/**/*.zsh",
+	".oh-my-zsh/themes/*.zsh-theme",
 	".profile",
 	".selected_editor",
-	".zshrc",
-	".zprofile",
+	".wakeonlan",
 	".zlogin",
 	".zlogout",
+	".zprofile",
+	".zshrc",
+	"docs/",
+	"!docs/config.yaml",
 }
 
 func DefaultUsers() map[string]User {
 	return map[string]User{
-		"root":     {Home: "/root/"},
-		"cjserver": {Home: "/home/cjserver/"},
+		"root":   {Home: "/root/"},
+		"ubuntu": {Home: "/home/ubuntu/"},
 	}
 }

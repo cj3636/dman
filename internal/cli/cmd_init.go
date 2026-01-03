@@ -65,25 +65,25 @@ var initCmd = &cobra.Command{
 			}
 		}
 
-		// Includes
-		fmt.Println("Default include list (comma separated) - press Enter to accept defaults:")
-		fmt.Println(strings.Join(config.DefaultInclude, ","))
-		fmt.Printf("Include overrides: ")
+		// Tracks
+		fmt.Println("Default track list (comma separated) - press Enter to accept defaults:")
+		fmt.Println(strings.Join(config.DefaultTrack, ","))
+		fmt.Printf("Track overrides: ")
 		incLine, _ := reader.ReadString('\n')
 		incLine = strings.TrimSpace(incLine)
-		var include []string
+		var track []string
 		if incLine == "" {
-			include = config.DefaultInclude
+			track = config.DefaultTrack
 		} else {
-			include = splitCommaList(incLine)
+			track = splitCommaList(incLine)
 		}
 
-		cfgObj := &config.Config{AuthToken: tok, ServerURL: url, GlobalInclude: include, Users: usersMap}
+		cfgObj := &config.Config{AuthToken: tok, ServerURL: url, GlobalTrack: track, Users: usersMap}
 		if err := config.Save(cfgObj, path); err != nil {
 			return err
 		}
 		fmt.Println("Config written to", path)
-		fmt.Println("You can edit per-user include overrides later by adding an 'include:' list under a user.")
+		fmt.Println("You can edit per-user track overrides later by adding a 'track:' list under a user.")
 		return nil
 	},
 }
