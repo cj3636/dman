@@ -1,15 +1,22 @@
 # Build artifacts
+*.exe
 bin
 dman
+dtm
+dotman
+
+# Test files
 storage_test.json
-*.exe
 *.tmp
 *.log
 *.out
 data/
 dtm
 
-# Config files
+# App
+data
+
+# Config
 *.env
 *.yaml
 *.yml
